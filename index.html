@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>msgpack / http client</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; background: #0d0d0d; color: #e0e0e0; min-height: 100vh; padding: 24px; }
+
+  h1 { font-size: 12px; color: #444; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #1a1a1a; display: flex; align-items: center; gap: 10px; }
+  h1 span { color: #666; }
+
+  .base-url-bar { background: #111; border: 1px solid #1e1e1e; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+  .base-url-bar label { font-size: 10px; color: #444; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap; }
+  .base-url-bar input { flex: 1; background: #0d0d0d; border: 1px solid #222; color: #a78bfa; font-family: inherit; font-size: 13px; padding: 7px 10px; border-radius: 4px; outline: none; transition: border-color 0.15s; }
+  .base-url-bar input:focus { border-color: #444; }
+  .base-url-preview { font-size: 10px; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  .panel { background: #111; border: 1px solid #1e1e1e; border-radius: 6px; overflow: hidden; }
+  .panel-header { background: #161616; padding: 10px 14px; font-size: 11px; color: #555; letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 1px solid #1e1e1e; display: flex; align-items: center; gap: 8px; }
+
+  label { display: block; font-size: 11px; color: #555; margin-bottom: 5px; letter-spacing: 0.05em; }
+  input, select, textarea { width: 100%; background: #0d0d0d; border: 1px solid #222; color: #e0e0e0; font-family: inherit; font-size: 12px; padding: 8px 10px; border-radius: 4px; outline: none; transition: border-color 0.15s; }
+  input:focus, select:focus, textarea:focus { border-color: #444; }
+  select option { background: #0d0d0d; }
+  textarea { resize: vertical; min-height: 140px; line-height: 1.6; }
+
+  .request-line { display: grid; grid-template-columns: 110px 1fr; gap: 8px; padding: 14px; padding-bottom: 10px; }
+  
+  .method-GET { color: #4ade80; }
+  .method-POST { color: #60a5fa; }
+  .method-PUT { color: #fb923c; }
+  .method-PATCH { color: #a78bfa; }
+  .method-DELETE { color: #f87171; }
+
+  .url-preview-row { padding: 0 14px 12px; font-size: 11px; color: #444; display: flex; align-items: center; gap: 6px; overflow: hidden; }
+  .url-preview-row .base-part { color: #333; }
+  .url-preview-row .route-part { color: #60a5fa; }
+
+  .send-btn { width: calc(100% - 28px); margin: 0 14px 14px; padding: 10px; background: #1a1a1a; border: 1px solid #2a2a2a; color: #ccc; font-family: inherit; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; border-radius: 4px; transition: all 0.15s; }
+  .send-btn:hover { background: #222; border-color: #555; color: #e0e0e0; }
+  .send-btn:active { background: #0d0d0d; transform: scale(0.99); }
+  .send-btn:disabled { color: #444; cursor: not-allowed; transform: none; }
+
+  .status-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #0f0f0f; border-bottom: 1px solid #1e1e1e; font-size: 11px; min-height: 36px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #2a2a2a; flex-shrink: 0; }
+  .status-dot.ok { background: #4ade80; }
+  .status-dot.error { background: #f87171; }
+  .status-dot.pending { background: #fb923c; animation: blink 0.8s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+  .status-code { font-weight: 600; font-size: 13px; }
+  .status-code.ok { color: #4ade80; }
+  .status-code.error { color: #f87171; }
+  .timing { margin-left: auto; color: #444; }
+
+  .tabs { display: flex; border-bottom: 1px solid #1a1a1a; }
+  .tab { padding: 8px 14px; font-size: 11px; color: #3a3a3a; cursor: pointer; border-bottom: 2px solid transparent; letter-spacing: 0.08em; text-transform: uppercase; transition: all 0.15s; user-select: none; }
+  .tab.active { color: #ccc; border-bottom-color: #444; }
+  .tab:hover:not(.active) { color: #666; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  pre { font-family: inherit; font-size: 12px; line-height: 1.75; white-space: pre-wrap; word-break: break-all; padding: 14px; max-height: 320px; overflow-y: auto; color: #aaa; }
+  pre::-webkit-scrollbar { width: 4px; }
+  pre::-webkit-scrollbar-track { background: transparent; }
+  pre::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+
+  .empty { padding: 48px 14px; text-align: center; color: #2a2a2a; font-size: 12px; }
+
+  .headers-wrap { padding: 12px 14px; }
+  .hdr-cols { display: grid; grid-template-columns: 1fr 1fr 22px; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .hdr-cols input { margin: 0; }
+  .rm-btn { background: none; border: none; color: #333; cursor: pointer; font-size: 18px; line-height: 1; padding: 2px; font-family: inherit; transition: color 0.1s; }
+  .rm-btn:hover { color: #f87171; }
+  .add-hdr { background: none; border: 1px dashed #1e1e1e; color: #333; font-size: 11px; padding: 6px 10px; cursor: pointer; border-radius: 4px; font-family: inherit; letter-spacing: 0.05em; transition: all 0.15s; margin-top: 4px; }
+  .add-hdr:hover { color: #666; border-color: #333; }
+
+  .pack-bar { display: flex; gap: 8px; align-items: center; padding: 6px 14px; background: #0d0d0d; border-top: 1px solid #1a1a1a; font-size: 10px; color: #2a2a2a; }
+  .pack-badge { background: #161616; border: 1px solid #1e1e1e; padding: 2px 8px; border-radius: 3px; color: #3a3a3a; letter-spacing: 0.05em; }
+  .saving { color: #4ade80; margin-left: auto; }
+
+  .hex-wrap { padding: 12px 14px; max-height: 320px; overflow-y: auto; font-size: 11px; line-height: 2; word-break: break-all; color: #444; }
+  .hx { display: inline-block; margin: 1px; cursor: default; }
+  .hx:hover { opacity: 0.7; }
+  .hx.s { color: #4ade80; }
+  .hx.n { color: #60a5fa; }
+  .hx.b { color: #fb923c; }
+  .hx.nu { color: #f87171; }
+  .hx.h { color: #a78bfa; }
+  .hx.o { color: #2a2a2a; }
+
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; padding: 10px 14px 0; font-size: 10px; color: #444; border-bottom: 1px solid #1a1a1a; padding-bottom: 10px; }
+
+  kbd { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 3px; padding: 1px 5px; font-size: 10px; color: #555; font-family: inherit; }
+</style>
+</head>
+<body>
+
+<h1>⬡ msgpack <span>/</span> http client <span style="margin-left:auto; font-weight:400;"><kbd>Ctrl</kbd> + <kbd>Enter</kbd> para enviar</span></h1>
+
+<!-- BASE URL -->
+<div class="base-url-bar">
+  <label>base url</label>
+  <input id="base-url" type="text" value="http://localhost:3000" placeholder="https://minha-api.com" oninput="updatePreview()" />
+  <span class="base-url-preview" id="base-preview" style="color:#555">configurado</span>
+</div>
+
+<div class="layout">
+
+  <!-- REQUEST -->
+  <div class="panel">
+    <div class="panel-header">▶ request</div>
+
+    <div class="request-line">
+      <div>
+        <label>método</label>
+        <select id="method" onchange="updateMethodColor(); updatePreview()">
+          <option value="GET" class="method-GET">GET</option>
+          <option value="POST" selected class="method-POST">POST</option>
+          <option value="PUT" class="method-PUT">PUT</option>
+          <option value="PATCH" class="method-PATCH">PATCH</option>
+          <option value="DELETE" class="method-DELETE">DELETE</option>
+        </select>
+      </div>
+      <div>
+        <label>rota</label>
+        <input id="route" type="text" value="/users" placeholder="/sua/rota" oninput="updatePreview()" />
+      </div>
+    </div>
+
+    <div class="url-preview-row">
+      <span style="color:#333">→</span>
+      <span class="base-part" id="preview-base">http://localhost:3000</span><span class="route-part" id="preview-route">/users</span>
+    </div>
+
+    <div class="tabs" id="req-tabs">
+      <div class="tab active" onclick="switchTab('req','body',this)">body</div>
+      <div class="tab" onclick="switchTab('req','headers',this)">headers</div>
+    </div>
+
+    <div id="req-body" class="tab-content active">
+      <div style="padding: 12px 14px 0;">
+        <label>json body — serializado para msgpack no envio</label>
+        <textarea id="body" placeholder='{"chave": "valor"}'>{
+  "nome": "João",
+  "idade": 30,
+  "ativo": true,
+  "tags": ["dev", "backend"]
+}</textarea>
+      </div>
+    </div>
+
+    <div id="req-headers" class="tab-content">
+      <div class="headers-wrap">
+        <div style="display:grid;grid-template-columns:1fr 1fr 22px;gap:6px;margin-bottom:8px;">
+          <span style="font-size:10px;color:#2a2a2a;letter-spacing:0.05em;">HEADER</span>
+          <span style="font-size:10px;color:#2a2a2a;letter-spacing:0.05em;">VALOR</span>
+          <span></span>
+        </div>
+        <div id="hdrs"></div>
+        <button class="add-hdr" onclick="addHeader()">+ header</button>
+      </div>
+    </div>
+
+    <div class="pack-bar">
+      <span class="pack-badge">msgpack</span>
+      <span>Content-Type: application/msgpack</span>
+      <span class="saving" id="saving-info"></span>
+    </div>
+
+    <button class="send-btn" id="send-btn" onclick="send()">⬡ enviar requisição</button>
+  </div>
+
+  <!-- RESPONSE -->
+  <div class="panel">
+    <div class="panel-header">
+      ◀ response
+      <span class="timing" id="timing"></span>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-dot" id="sdot"></div>
+      <span class="status-code" id="scode">aguardando...</span>
+      <span id="stext" style="color:#444;font-size:11px;"></span>
+    </div>
+
+    <div class="tabs" id="res-tabs">
+      <div class="tab active" onclick="switchTab('res','decoded',this)">decoded</div>
+      <div class="tab" onclick="switchTab('res','raw',this)">raw</div>
+      <div class="tab" onclick="switchTab('res','hex',this)">hex map</div>
+      <div class="tab" onclick="switchTab('res','rheaders',this)">headers</div>
+    </div>
+
+    <div id="res-decoded" class="tab-content active">
+      <div class="empty" id="dec-empty">nenhuma resposta ainda</div>
+      <pre id="dec-out" style="display:none"></pre>
+    </div>
+    <div id="res-raw" class="tab-content">
+      <pre id="raw-out"><span style="color:#2a2a2a">—</span></pre>
+    </div>
+    <div id="res-hex" class="tab-content">
+      <div class="legend" id="hex-legend" style="display:none">
+        <span><span class="hx s">■</span> string</span>
+        <span><span class="hx n">■</span> number</span>
+        <span><span class="hx b">■</span> bool</span>
+        <span><span class="hx nu">■</span> null</span>
+        <span><span class="hx h">■</span> header</span>
+        <span><span class="hx o">■</span> outros</span>
+      </div>
+      <div class="hex-wrap" id="hex-out"><span style="color:#2a2a2a">—</span></div>
+    </div>
+    <div id="res-rheaders" class="tab-content">
+      <pre id="rheaders-out"><span style="color:#2a2a2a">—</span></pre>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/msgpack-lite/0.1.26/msgpack.min.js"></script>
+<script>
+  // ── state ──
+  let customHeaders = [
+    { k: 'Accept', v: 'application/x-msgpack, application/json' },
+    { k: 'X-Client', v: 'msgpack-browser' }
+  ];
+
+  // ── url preview ──
+  function updatePreview() {
+    const base = document.getElementById('base-url').value.replace(/\/$/, '');
+    const route = document.getElementById('route').value;
+    const route2 = route.startsWith('/') ? route : '/' + route;
+    document.getElementById('preview-base').textContent = base;
+    document.getElementById('preview-route').textContent = route2;
+    document.getElementById('base-preview').textContent = (base + route2).replace(/^https?:\/\//, '');
+  }
+  updatePreview();
+
+  
+
+  function getFullUrl() {
+    const base = document.getElementById('base-url').value.replace(/\/$/, '');
+    const route = document.getElementById('route').value;
+    const route2 = route.startsWith('/') ? route : '/' + route;
+    return base + route2;
+  }
+
+  // ── method color ──
+  function updateMethodColor() {
+    const sel = document.getElementById('method');
+    sel.className = 'method-' + sel.value;
+  }
+
+  // ── tabs ──
+  function switchTab(group, name, el) {
+    const prefix = group === 'req' ? 'req-' : 'res-';
+    document.querySelectorAll('[id^="' + prefix + '"]').forEach(t => t.classList.remove('active'));
+    const tabsId = group === 'req' ? 'req-tabs' : 'res-tabs';
+    document.getElementById(tabsId).querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(prefix + name).classList.add('active');
+    el.classList.add('active');
+  }
+
+  // ── headers ──
+  function renderHeaders() {
+    const c = document.getElementById('hdrs');
+    c.innerHTML = '';
+    customHeaders.forEach((h, i) => {
+      const row = document.createElement('div');
+      row.className = 'hdr-cols';
+      row.innerHTML = `
+        <input value="${h.k}" placeholder="Header" oninput="customHeaders[${i}].k=this.value" />
+        <input value="${h.v}" placeholder="valor" oninput="customHeaders[${i}].v=this.value" />
+        <button class="rm-btn" onclick="rmHeader(${i})">×</button>
+      `;
+      c.appendChild(row);
+    });
+  }
+  function addHeader() { customHeaders.push({ k: '', v: '' }); renderHeaders(); }
+  function rmHeader(i) { customHeaders.splice(i, 1); renderHeaders(); }
+  renderHeaders();
+
+  // ── hex map ──
+  function buildHex(buffer) {
+    const arr = new Uint8Array(buffer);
+    const wrap = document.getElementById('hex-out');
+    wrap.innerHTML = '';
+    arr.forEach((byte, i) => {
+      const sp = document.createElement('span');
+      sp.className = 'hx';
+      const h = byte.toString(16).padStart(2, '0');
+      if (i < 4) sp.className += ' h';
+      else if (byte >= 0xa0 && byte <= 0xbf) sp.className += ' s';
+      else if (byte === 0xc2 || byte === 0xc3) sp.className += ' b';
+      else if (byte === 0xc0) sp.className += ' nu';
+      else if ((byte >= 0x00 && byte <= 0x7f) || (byte >= 0xcc && byte <= 0xcf) || (byte >= 0xd0 && byte <= 0xd3)) sp.className += ' n';
+      else sp.className += ' o';
+      sp.textContent = h;
+      sp.title = `byte[${i}] = 0x${h} (${byte})`;
+      wrap.appendChild(sp);
+      wrap.appendChild(document.createTextNode(' '));
+    });
+    document.getElementById('hex-legend').style.display = 'flex';
+  }
+
+  // ── syntax highlight ──
+  function highlight(json) {
+    return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, m => {
+      let c = 'color:#888';
+      if (/^"/.test(m)) c = /:$/.test(m) ? 'color:#a78bfa' : 'color:#4ade80';
+      else if (/true|false/.test(m)) c = 'color:#fb923c';
+      else if (/null/.test(m)) c = 'color:#f87171';
+      else c = 'color:#60a5fa';
+      return `<span style="${c}">${m}</span>`;
+    });
+  }
+
+  function toPascalCase(obj) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  
+  if (Array.isArray(obj)) {
+    return obj.map(v => toPascalCase(v));
+  }
+  
+  return Object.keys(obj).reduce((res, key) => {
+    // Garante que a chave existe e não é vazia antes de converter
+    const pascalKey = key.length > 0 ? key.charAt(0).toUpperCase() + key.slice(1) : key;
+    res[pascalKey] = toPascalCase(obj[key]);
+    return res;
+  }, {});
+}
+
+  // ── send ──
+  async function send() {
+    const method = document.getElementById('method').value;
+    const url = getFullUrl();
+    const bodyText = document.getElementById('body').value.trim();
+    const btn = document.getElementById('send-btn');
+
+    // Reset UI
+    btn.textContent = '⬡ enviando...';
+    btn.disabled = true;
+    const dot = document.getElementById('sdot');
+    dot.className = 'status-dot pending';
+    document.getElementById('scode').textContent = '...';
+    document.getElementById('stext').textContent = '';
+    document.getElementById('timing').textContent = '';
+    document.getElementById('saving-info').textContent = '';
+
+    const t0 = performance.now();
+
+    try {
+      const hdrs = {};
+      customHeaders.forEach(h => { if (h.k) hdrs[h.k] = h.v; });
+
+      let packedBuf = null;
+      const hasBody = ['POST', 'PUT', 'PATCH'].includes(method) && bodyText;
+      const init = { method, headers: hdrs };
+
+      if (hasBody) {
+        let parsed;
+        try { 
+          // 1. Tenta transformar o texto em Objeto
+          parsed = JSON.parse(bodyText);
+          
+          // 2. Aplica a conversão de Case (Camel -> Pascal)
+          parsed = toPascalCase(parsed); 
+          
+          // 3. Encode para MsgPack (Aqui ele vira um MAP corretamente)
+          packedBuf = msgpack.encode(parsed);
+          
+        } catch (e) { 
+          // Se o JSON estiver mal formatado, paramos aqui
+          dot.className = 'status-dot error';
+          scode.textContent = 'JSON INVÁLIDO';
+          scode.className = 'status-code error';
+          stext.textContent = "Erro de sintaxe no body. Verifique vírgulas e dois-pontos.";
+          
+          // Mostra o erro no log para ajudar a debugar
+          console.error("Erro no JSON:", e);
+          
+          btn.textContent = '⬡ enviar requisição';
+          btn.disabled = false;
+          return; // CANCELA O ENVIO
+        }
+        
+        hdrs['Content-Type'] = 'application/x-msgpack';
+        init.body = packedBuf;
+      }
+
+      const res = await fetch(url, init);
+      const elapsed = Math.round(performance.now() - t0);
+      document.getElementById('timing').textContent = elapsed + 'ms';
+
+      dot.className = 'status-dot ' + (res.ok ? 'ok' : 'error');
+      const sc = document.getElementById('scode');
+      sc.textContent = res.status;
+      sc.className = 'status-code ' + (res.ok ? 'ok' : 'error');
+      document.getElementById('stext').textContent = res.statusText;
+
+      // response headers
+      const rhdrs = {};
+      res.headers.forEach((v, k) => rhdrs[k] = v);
+      document.getElementById('rheaders-out').innerHTML =
+        Object.entries(rhdrs).map(([k,v]) => `<span style="color:#a78bfa">${k}</span>: <span style="color:#888">${v}</span>`).join('\n');
+
+      // body handling
+      const ct = res.headers.get('content-type') || '';
+      let decoded, rawBuf;
+      
+      if (ct.includes('msgpack')) {
+        const ab = await res.arrayBuffer();
+        rawBuf = ab;
+        decoded = msgpack.decode(new Uint8Array(ab));
+      } else {
+        const txt = await res.text();
+        try { decoded = JSON.parse(txt); } catch { decoded = txt; }
+        rawBuf = decoded ? msgpack.encode(decoded).buffer : null;
+      }
+
+      const str = JSON.stringify(decoded, null, 2);
+      document.getElementById('dec-empty').style.display = 'none';
+      const dc = document.getElementById('dec-out');
+      dc.style.display = 'block';
+      dc.innerHTML = highlight(str);
+      document.getElementById('raw-out').textContent = str;
+      if (rawBuf) buildHex(rawBuf);
+
+      // saving info
+      if (packedBuf && bodyText) {
+        const saved = Math.round((1 - packedBuf.length / bodyText.length) * 100);
+        if (saved > 0)
+          document.getElementById('saving-info').textContent = `↓ ${saved}% menor que json (PascalCase applied)`;
+      }
+
+    } catch (e) {
+      dot.className = 'status-dot error';
+      document.getElementById('scode').textContent = 'ERRO';
+      document.getElementById('stext').textContent = e.message;
+    }
+
+    btn.textContent = '⬡ enviar requisição';
+    btn.disabled = false;
+  }
+
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') send();
+  });
+</script>
+</body>
+</html>
